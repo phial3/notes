@@ -558,3 +558,405 @@ Label_Go_On_Reading:
 
 #### 访问文件
 
+访问文件的主要流程：
+
+- 根据根目录的总扇区数 14 ，从头开始遍历所有扇区（一层遍历）
+    - 使用上小节中的 Func_ReadOneSector 函数读取扇区内容，每一个根目录扇区都有 16 个目录项（ 512/32），从头开始遍历所有目录项（二层遍历）
+        - 每个目录项的前 11 字节是文件名称，与要寻找的名称 loader.bin("LOADER   BIN") 逐位匹配（三层遍历）
+
+```assembly
+; ========== search file loader.bin     搜索名为 loader.bin 的文件
+; 文件搜索，通过这段代码能从根目录中搜索出引导加载程序,文件名为loader.bin
+; 1. 在程序执行初期,程序会先保存根目录的起始扇区号,并根据根目录占用磁盘扇区来确定需要搜索的扇区数, 也就是从 SectorNumOfRootDirStart=19 开始，一共 RootDirSectors=14 个扇区
+; 2. 遍历所有扇区
+; 3. 每轮遍历，从根目录中读入一个扇区的数据到缓冲区，遍历当前扇区中的所有目录项(内层循环)，寻找目标文件名为 "LOADER BIN" 相匹配的目录项:
+;     - 如果当前目录项没找到，遍历条件 dx - 1 ,继续寻找根目录的下一个目录项
+;     - 如果找到，直接返回
+; 4. 如果没有找到，那么继续寻找下一个扇区，遍历条件 SectorNo + 1
+
+        mov     word    [SectorNo],   SectorNumOfRootDirStart           ; SectorNumOfRootDirStart 根目录的起始扇区号，设置为 19
+        ; SectorNo 为不带冒号的变量，默认值为 0，大小为 word
+        ; 保存根目录的起始扇区，保存在变量 SectorNo 中
+
+Label_Search_In_Root_Dir_Begin:
+        cmp     word      [RootDirSizeForLoop],     0         ; RootDirSizeForLoop 变量表示根目录扇区数 14, 此处 与 0 比较
+        ; 遍历所有扇区的终止条件，如果 根目录扇区数变为 0,则终止
+        ; 比较结果表现在 EFLAGS 标志位中, 例如 CMP ax, bx
+        ;     - 如果（ax）=（bx）则（ax）-（bx）= 0，所以：zf = 1；
+        ;     - 如果（ax）!=（bx）则 （ax）-（bx）!= 0，所以：zf != 1；
+        ;     - 如果（ax）<（bx）则（ax）-（bx）将产生借位，所以：cf = 1；
+        ;     - 如果（ax）>=（bx）则（ax）-（bx）将不会产生借位，所以：cf = 0；
+        ;     - 如果（ax）>（bx）则（ax）-（bx）即不借位，结果又不为零，所以：cf = 0，zf = 0； 
+        ;     - 如果（ax）<=（bx）则（ax）-（bx）即可能借位，结果可能为0，所以：cf = 1，zf = 1；
+        
+        jz      Label_No_LoaderBin          ; jz 表示 zf 标志位为1 ，则跳转            
+        ; 遍历结束，没有找到 loader.bin 文件
+        
+        dec     word      [RootDirSizeForLoop]        ; RootDirSizeForLoop 变量减 1，表示每轮遍历，根目录扇区数减小一
+
+
+        ; 下面构造 Func_ReadOneSector 所需的参数：
+        ; AX - 待读取的磁盘起始扇区号,这里是逻辑扇区号，也就是 LBA 模式
+        ; CL - 读入的扇区数量
+        ; ES:BX - 读取的目标缓冲区起始地址  
+        mov     ax,     00h 
+        mov     es,     ax                  ; 这两步,构造 es,也就是读取的目标缓冲区的段地址,为00h 
+        mov     bx,     8000h               ; 以上,构造出了 ES:BX 参数,读取到目标缓冲区 0000h:8000h = 0x08000h
+        mov     ax,     [SectorNo]          ; 当前的起始扇区保存在 SectorNo 中,构造参数 ax, 待读取起始扇区号 为 0
+        mov     cl,     1                   ; 构造参数 cl 为 1, 每次读取一个扇区
+
+        call    Func_ReadOneSector          ; 调用 读取一个扇区的函数
+        
+        ; 到此处,已经读取了第一个根目录扇区的内容到 ES:BX
+        ; 接下来遍历读入缓冲区的每个目录项,寻找与目标文件名字符串相匹配的目录项,其中:
+        ; DX 记录着每个扇区可容纳的目录项个数(512/32=16)
+        ; CX 记录着目录项的文件名长度(文件名长度为11字节,包括文件名和扩展名,但不包含分隔符'.')
+        ; 在对比每个目录项文件名的过程中,使用了汇编指令LODSB,该命令的加载方向与DF标志位有关,因此在使用此命令时需用CLD指令清DF标志位
+        ;
+        ; 串操作指令LODSB/LODSW/LODSD是块装入指令,
+        ;     - 具体操作是把 DS:(R|E)SI 指定的内存地址中的数据读取到 AL/AX/EAX/RAX 累加寄存器中.
+        ;     - 当数据载入到 AL/AX/EAX/RAX 寄存器后, (R|E)SI 寄存器将会根据 R|EFLAGS 标志寄存器的 DF 标志位,来自动增加/减少载入的数据长度
+        ;         - 当DF=0时，变址寄存器SI(和DI)增加1/2/4/8
+        ;         - 当DF=1时，变址寄存器SI(和DI)减少1/2/4/8
+
+        
+        mov     si,     LoaderFileName            ; 文件名称所在的标号,也就是偏移地址 给 si 源变址寄存器,可用来存放相对于DS段之源变址指针
+        mov     di,     8000h                     ; 目的变址寄存器，可用来存放相对于 ES 段之目的变址指针
+        ; 在串处理指令中，SI用作隐含的源串地址，默认在DS中；DI用做隐含的目的串地址，默认在ES中；此时不能混用。
+        ; 这里 si 表示要寻找的文件名称的偏移地址，di 表示目标地址，也就是从哪里找
+
+        cld               ; cld相对应的指令是std，二者均是用来操作方向标志位DF（Direction Flag）。这里目的是清空 df,以免影响 LODSW
+        ; - cld使DF 复位，即是让DF=0 
+        ; - std使DF置位，即DF=1
+        
+        mov     dx,     10h                       ; dx 表示每个扇区可容纳的目录项个数,每个扇区512字节,每个目录项长 32 字节,共16(512/32)个目录项
+        ; dx 也是一个遍历条件，需要遍历所有的目录项
+
+
+; 从根目录当前扇区的每一个目录项寻找
+Label_Search_For_LoaderBin:
+        cmp     dx,     0                         ; dx 表示根目录每个扇区的目录项，与 0 作比较
+        ; 内层循环，遍历每个目录项：
+        ;     - 如果等于0，当前扇区的所有目录项已经寻找完毕，继续下一个扇区
+        ;     - 如果不等于0，继续寻找当前扇区的下一个目录项
+
+        jz      Label_Goto_Next_Sector_In_Root_Dir      ; 如果 dx=0, 即 zf=1 跳转，继续从根目录的下一个扇区开始寻找
+        dec    dx                                      ; 如果 dx!=0,即 zf=0 ，说明还有目录项没有检查，遍历条件 dx-1, 继续寻找下一个目录项
+        mov     cx,     11                              ; cx 保存文件名称的长度
+        ; cx 也是一个遍历条件，遍历文件名长度，逐个字符比较
+
+
+; 逐位比较文件名
+Label_Compare_FileName:
+; 根据文件名的长度，比较每一位
+        cmp     cx,     0                               ; cx 文件名长度，与 0 作比较
+        ; 文件名的每一个字符进行比较
+        ;     - 如果名称长度变为0, 说明完全匹配，找到文件
+        ;     - 如果名称长度不为0, 说明还没比较完，继续比较
+
+        jz      Label_FileName_Found                    ; 如果 cx=0, 即 zf=1, 找到文件，跳转
+        dec     cx                                      ; 如果 cx!=0, 即 zf=0, 还没比较完成，继续下一个字符
+        lodsb                                           ; 将 DS:SI 的内容，加载到 AX 中，并根据 DF(方向标志位)，对 SI 进行加减
+        ; 此步骤 从 SI 中读取要寻找的文件名的偏移地址
+        
+        cmp     al,     byte      [es:di]               ; 比较 al 与 es:di 的内容
+        ; al 表示要文件名称的第某位上的字符数据
+        ; es:di 表示从根目录某个扇区中的内容偏移地址，后续会逐个遍历每个目录项，也就是增加 di ，每个目录项32字节，需增加 32B 
+        ; 因为对于每一个目录项，最开始的11字节就是存放在此处的文件名称，即 DIR_Name
+        ;     - 如果 al=[es:di]，说明当前字符匹配，继续比较下一个字符
+        ;     - 如果 al!=[es:di]，说明当前字符不匹配，直接从下一个目录项开始寻找
+        
+        jz      Label_Go_On                             ; 如果 al=[es:di]，即 zf=1，当前字符匹配，跳转继续比较下一个字符
+        jmp     Label_Different                         ; 如果 al!=[es:di]，即 zf=0, 当前字符不匹配，跳转，继续从下一个目录项开始寻找
+
+
+; 比较字符
+Label_Go_On:
+        
+        inc     di                                      ; di+1，di 后移一个字节，继续比较
+        jmp     Label_Compare_FileName                  ; 继续比较下一个字符
+
+
+; 当前目录项文件名不匹配，继续下一个目录项
+Label_Different:
+        
+        and     di,     0ffe0h                          ; di & ffe0h
+        ; 这里为什么要 与 ffe0h?
+        ; 因为，字符逐位比较的时候，di 有可能已经移动了几位（11位之内），因此需要回到当前目录项的首地址。
+        ; 怎么找到当前目录项的首地址呢？
+        ; 首先，一个目录项长度是 32(0010 0000)，那么每次从一个目录项首地址跳转到另一个目录项的首地址，不必关心最低 5 位，也就是说，目录项的首地址的偏移地址一定是32的整数倍
+        ; 因此，di 与 ffe0h(1111 1111 1110 0000)，就是当前目录项的首地址的偏移地址
+        add     di,     20h                             ; di + 20h(32)，跳到当前扇区的下一个目录项首地址
+
+        mov     si,     LoaderFileName                  ; 因为前一个目录项 lodsb 时候，已经破坏了 si，再次初始化 si 为要寻找的文件名首地址
+        jmp     Label_Search_For_LoaderBin              ; 跳转到寻找下一个目录项
+
+
+; 如果当前扇区的所有目录项都没有找到，继续从根目录的下一个扇区开始寻找
+Label_Goto_Next_Sector_In_Root_Dir:
+        
+        add     word    [SectorNo],     1               ; 变量 SectorNo + 1, 表示已检查的扇区，遍历条件
+        jmp     Label_Search_In_Root_Dir_Begin          ; 重新开始读取扇区，比较每一个目录项的文件名
+
+
+
+
+
+; ========== display on screen : ERROR:No LOADER Found 没找到报错
+Label_No_LoaderBin:
+; 通过 Boot 10h 中断，显示字符串，参考 101-122 行
+
+        mov     ax,     1301h 
+        mov     bx,     008ch           ; 字体红色，闪烁
+        mov     dx,     0100h           ; 第一行(从0开始)
+        mov     cx,     21              ; 显示字符串长度
+        push    ax
+        mov     ax,     ds 
+        mov     es,     ax
+        pop     ax                      ; 构造 es 为数据段地址，要显示字符串的段地址， bp 为偏移地址
+        mov     bp,     NoLoaderMessage
+
+        int     10h               
+        
+        jmp     $                       ; 死循环此步骤
+        
+
+Label_FileName_Found:
+        nop
+
+
+
+; ========== tmp variable 临时变量
+RootDirSizeForLoop      dw    RootDirSectors      ; RootDirSectors 根目录占用的扇区数
+SectorNo                dw    0                   
+odd                     dw    0 
+
+
+
+
+  
+; 变量与标号： 不带冒号与带冒号
+;     - 变量：不带冒号，后面可跟db、dw、dd等伪指令, 不带冒号的标号不仅表示内存单元的地址，还包含了内存单元的长度
+;         - 例如，SectorNo dw 0, 表示 SectorNo 变量为 word 长度，初始化为 0 
+;         - SectorNo 表示的就是定义的这段存储空间的首地址，称为变量名
+;         - 可以直接使用：  mov al,a[si] ;在代码段中直接使用变量访问数据, 或者 add b,ax ;在代码段中直接使用变量访问数据
+;         - 变量一旦定义了，就具有5个属性
+;             - 段地址属性
+;             - 段内偏移地址属性
+;             - 类型
+;             - 长度
+;             - 大小
+;     - 标号：带冒号，带冒号的标号只能表示地址。
+;         - 标号一旦定义了，就具有三个属性：
+;             - 段地址属性
+;             - 段内偏移地址属性
+;             - 类型：NEAR和FAR
+
+
+
+
+; =========== display messages 
+
+StartBootMessage:       db    "Start Boot..."
+LoaderFileName:         db    "LOADER  BIN", 0        ; bootloader 文件名，文件名不区分大小写，FAT 文件系统的文件名称为 11 位，从后数为后缀，从前数为名称，剩于空格
+NoLoaderMessage:        db    "ERROR:No LOADER Found" ; 没有找到文件的错误提示
+```
+
+
+
+
+
+以上，执行结果如下：
+
+![访问文件-寻找loader.bin文件](assets/访问文件-寻找loaderbin.png)
+
+
+
+#### 从 FAT 表中加载文件内容
+
+步骤：
+
+1. 上一步已经找到了 loader.bin 文件在根目录中的位置，并且在根目录中，找到了 DIR_FstCtus ，即 loader.bin 文件的起始簇号（扇区）
+2. 从 FAT 表中，找到起始簇号的地址，计算出数据区的起始簇号，读取起始扇区的内容到内存
+3. 根据 FAT 表中 FAT[起始簇号] 的值，即指向文件的下一个簇号，继续计算出数据区的对应簇号，读取扇区中的内容
+4. 循环执行，直到读取到文件结尾
+
+
+
+```assembly
+; =========== found loader.bin name in root director struct
+; 从文件系统中加载 loader.bin 文件的整个过程
+; 1. 在根目录中找到名为 loader.bin 的目录项，并获取到该文件的起始簇号 DIR_FstCtus
+; 2. 根据 loader.bin 文件的起始簇号，在 FAT 表项开始找，没找到一个，就从数据区将文件内容加载到内存，直到结束
+Label_FileName_Found:
+        
+        mov     ax,     RootDirSectors                ; 根目录占用的扇区数给 ax
+        and     di,     0ffe0h                        ; 此时 di 保存了 loader.bin 文件所在的根目录项地址（但不是首地址，名字逐位比较后有偏移），与操作后，回到首地址（原理见前）
+        add     di,     01ah                          ; DIR_FstCtus 在根目录的 01ah 偏移处，因此 di + 01ah = DIR_FstCtus 的首地址
+        mov     cx,     [word]      [es:di]           ; DIR_FstCtus 占两个字节，也就是一个字，将 DIR_FstCtus 内容赋值给 cx
+        ; cx 就是 loader.bin 的起始簇号
+
+        push    cx                                    
+        add     cx,     ax
+        add     cx,     SectorBalance                 ; 这部分主要是计算起始簇号 FAT[n] 的位置（原理见前）
+        ; 此时，cx 是起始簇号对应在 FAT 中的位置
+
+        mov     ax,     BaseOfLoader
+        mov     es,     ax
+        mov     bx,     OffsetOfLoader
+        mov     ax,     cx
+        ; 此时 es:bx 表示将 loader.bin 文件内容加载到内存的位置
+        ; ax 是 loader.bin 文件起始簇号对应在 FAT 中的位置(扇区号)
+
+Label_Go_On_Loading_File:         ; 加载 loader.bin 文件内容
+; 通过 Bios 中断 INT 10H 显示服务， 功能 0EH 在 Teletype 模式下显示字符
+        
+        push      ax
+        push      bx
+        
+        mov       ah,     0eh     ; 功能 0EH, 功能描述：在 Teletype 模式下显示字符
+        ; 入口参数：
+        ;     - AL＝字符
+        ;     - BH＝页码
+        ;     - BL＝前景色(图形模式)
+        mov       al,     '*'     ; 每加载一个 FAT 项，输出一个 *，即占用多少个扇区
+        mov       bl,     0fh     ; 前景色，0fh = (0000 1111) 表示字体颜色黑色，不高亮，背景色为白色，闪烁
+        int       10h             ; 显示服务，具体功能由 AH 决定
+
+        pop       bx
+        pop       ax
+
+
+        mov       cl,     1                 ; 读取 1 个扇区
+        call      Func_ReadOneSector        ; 从 loader.bin 文件的起始扇区号 ax 开始加载，加载到 es:bx, 也就是读取当前簇号对应的数据区的扇区内容到内存
+
+        pop       ax                        ; 上面还有 cx 没有出栈，ax = cx，起始簇号
+        call      Func_GetFATEntry          ; ah 保存起始簇号，调用 Func_GetFATEntry 获取到 FAT[ah] 对应的值，包括了下一个簇号
+        ; Func_GetFATEntry 函数调用后，AX 的低 12 位保存了 FAT[原ah] 的值
+
+        cmp       ax,     0fffh             ; 比较 ax 是否与 0fffh 相等，也就是判断当前簇号是否是文件最后一个
+        ; - 如果 ax=0fffh，当前簇号在 FAT[n]=0fffh，已经是文件结尾了，loader.bin 文件加载完成
+        ; - 如果 ax!=0fffh，当前簇号在 FAT[n]!=0fffh，loader.bin 文件还没有加载完成，还需要继续寻找 FAT[n] 对应的下一个 簇号
+
+        jz        Label_File_Loaded         ; 如果 zf=1,即 ax=0fffh，则加载完成，跳转 Label_File_Loaded
+        push      ax                        ; 否则，zf=0,即 ax!=0fffh,继续加载下一个簇号的数据，
+        ; 此时 ax 表示了要加载的下一个簇号
+        mov       dx,     RootDirSectors
+        add       ax,     dx 
+        add       ax,     SectorBalance     
+        add       bx,     [BPB_BytesPerSec] ; 这里逻辑与之前的一致，ax 现在为 FAT 表项实际的扇区偏移, es:bx 为要加载的目标内存地址，这里bx往后走一个扇区大小，因为已经加载了一个簇（扇区）
+
+        jmp       Label_Go_On_Loading_File
+
+
+Label_File_Loaded:
+        jmp       $
+        
+        
+
+; =============== get FAT Entry 
+; 在根目录区找到 lodaer.bin 文件后，根据根目录文件指定的 FAT 表的位置，依次将 FAT 提供的簇号指定的数据区内容，加载到内存
+; FAT12 文件系统的 FAT 表的每个表项长度是 12 bit，也就是 1.5 byte(字节)，即 每 3个字节存储 2 个表项，因此AT表项的存储是具有奇偶性的
+; 奇偶性体现在，某个 FAT 表项可能从某个字节的第0位开始，也可能是从该字节的第4位开始，因此需要对奇数项和偶数项区别对待
+; 输入参数：AH=FAT初始表项号
+;
+; 计算方式：
+; FAT 初始表项序号 * 1.5 / 每扇区字节数（512）= 初始序号在第几个字节byte / 每扇区字节数 = 当前FAT表项序号在哪个扇区的哪个位置
+; ====>  商 表示 FAT 表项的偏移扇区号，余数表示扇区中的偏移位置
+Func_GetFATEntry:
+        
+        push      es 
+        push      bx
+        push      ax                ; 保存下面用到的寄存器状态，其中 ax 是输入参数(ah初始表项号)
+
+        mov       ax,     00 
+        mov       es,     ax        ; 将 es 赋值位 00, 为了后续调用 Func_ReadOneSector 的读取扇区到目标地址 es:bx
+        pop       ax                ; 将 初始 FAT 表项位置 ax 出栈
+        mov       byte    [Odd],      0          ; 将 odd 变量置为 0 
+      
+        mov       bx,     3 
+        mul       bx
+        mov       bx,     2 
+        div       bx                ; 乘以3除以2，也就是 乘以（扩大） 1.5，在判断是否可以整除
+        ; 这里只做了第一步扩大 1.5, 计算出FAT表项序号在第几个字节
+        
+        cmp       dx,     0         ; 因为除数是 16 位，dx 保存余数，ax 保存商, 此处比较 余数 dx 是否等于0 
+        ; 如果 Fat表项序号 / 1.5 的余数dx：
+        ;     - dx=0：表示可以整除，那么 odd=0, 表示正好第偶数个，从当前字节（byte）的第0位开始
+        ;     - dx!=0：表示不可以整除，那么 odd=1, 表示是第奇数个，从当前字节（byte）的第4位开始
+
+        jz        Label_Even        ; zf=1 表示 dx=0, 整除，跳转，Odd 变量为 0 
+        mov       byte      [Odd],      1         ; zf!=1, 表示 dx!=0，不能整除，Odd 变量置1 
+
+
+Label_Even:           ; AX 表示在FAT表项在第几个字节，Odd 奇偶标志，这里做第二步，除以每个扇区字节长度，计算出在第几个扇区中的第几个字节
+        
+        xor       dx,     dx              ; dx 置 0 ，以免影响后面的除法结果
+        mov       bx,     [BPB_BytesPerSec]           ; 除数为 每个扇区的字节长度
+        div       bx                      ; AX/BX，商 AX 表示 FAT 表项的偏移扇区号，余数 DX 表示扇区中的偏移位置
+
+        push      dx                      ; dx(在扇区中的偏移位置) 入栈
+        mov       bx,     8000h                         ; es:bx 读取的目标位置，es之前已经初始化
+        add       ax,     SectorNumOfFAT1Start          ; FAT1 表的起始扇区号 + FAT 表项的偏移扇区号(AX) = 初始表项在哪个扇区
+        mov       cl,     2                             ; 要读取的扇区数量，读取 2 个扇区的目的是，有可能该表项横跨了两个扇区
+        call      Func_ReadOneSector                    ; 调用 Func_ReadOneSector 读取扇区内容
+
+        pop       dx                                    ; dx 偏移位置出栈
+        add       bx,     dx                            ; 读取扇区的目标地址 + FAT 表项在某个扇区的偏移位置 = 从FAT第一个表项开始的偏移地址
+        ; 此时，bx 就是要寻找的扇区的首地址偏移
+        mov       ax,     [es:bx]                       ; ax 表示从 bx 开始的 16位 (2字节) 数据
+        cmp       byte    [Odd],      1                 ; 判断奇偶标志位
+        jnz       Label_Even_2                          ; 如果 zf!=1, 即 Odd=0, 即就在当前字节的第0位开始, 跳转到 Label_Even_2, 不需要移位
+        shr       ax,     4                             ; 否则，zf=1, 即 Odd=1, 即在当前字节的第 4 为开始，需要向右移动 4 位
+
+Label_Even_2:         ; 此时，AX(16位) 的 低12位表示了FAT表项的内容
+        
+        add       ax,     0fffh                         ; AX 低12位保存了FAT表项的内容，因此只保留低 12 位数据
+        pop       bx
+        pop       es 
+        ret                                             ; 恢复现场，返回
+
+        
+
+
+
+; ========== tmp variable 临时变量
+RootDirSizeForLoop      dw    RootDirSectors      ; RootDirSectors 根目录占用的扇区数
+SectorNo                dw    0                   
+Odd                     db    0                   ; 奇偶位
+
+
+
+
+  
+; 变量与标号： 不带冒号与带冒号
+;     - 变量：不带冒号，后面可跟db、dw、dd等伪指令, 不带冒号的标号不仅表示内存单元的地址，还包含了内存单元的长度
+;         - 例如，SectorNo dw 0, 表示 SectorNo 变量为 word 长度，初始化为 0 
+;         - SectorNo 表示的就是定义的这段存储空间的首地址，称为变量名
+;         - 可以直接使用：  mov al,a[si] ;在代码段中直接使用变量访问数据, 或者 add b,ax ;在代码段中直接使用变量访问数据
+;         - 变量一旦定义了，就具有5个属性
+;             - 段地址属性
+;             - 段内偏移地址属性
+;             - 类型
+;             - 长度
+;             - 大小
+;     - 标号：带冒号，带冒号的标号只能表示地址。
+;         - 标号一旦定义了，就具有三个属性：
+;             - 段地址属性
+;             - 段内偏移地址属性
+;             - 类型：NEAR和FAR
+
+
+
+
+; =========== display messages 
+
+StartBootMessage:       db    "Start Boot..."
+LoaderFileName:         db    "LOADER  BIN", 0        ; bootloader 文件名，文件名不区分大小写，FAT 文件系统的文件名称为 11 位，从后数为后缀，从前数为名称，剩于空格
+NoLoaderMessage:        db    "ERROR:No LOADER Found" ; 没有找到文件的错误提示
+```
+
+
+
+#### 从 Boot 跳转到 Loader
+
