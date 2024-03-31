@@ -202,7 +202,7 @@ Label_Start:
         ; (CH、CL)＝窗口的左上角位置(Y 坐标，X 坐标)
         ; (DH、DL)＝窗口的右下角位置(Y 坐标，X 坐标)
 
-        mov     bx,   8f00h       ; BH=8fh=1000 1111  
+        mov     bx,   0f00h       ; BH=8fh=1000 1111  
         ; bit 0~2:111=7 字体颜色白色
         ; bit 3:1 字体高亮
         ; bit 4~6:000=0 背景颜色黑色
@@ -959,4 +959,52 @@ NoLoaderMessage:        db    "ERROR:No LOADER Found" ; 没有找到文件的错
 
 
 #### 从 Boot 跳转到 Loader
+
+完整代码见 `ch04_OS-To-PM/boot.asm`，实现了从 Boot 跳转到 Loader
+
+
+
+如何执行呢？
+
+1. 将软盘内容格式化
+
+```bash
+dd if=/dev/null of=./shos.img bs=512 count=1 conv=notrunc
+```
+
+2. 将软盘的格式初始化成 Fat
+
+```bash
+mkfs.vfat -F 12 shos.img
+```
+
+3. 将 boot.asm 启动文件编译好的 boot.bin 写入第一个扇区
+
+```bash
+dd if=boot.bin of=./shos.img bs=512 count=1 conv=notrunc
+```
+
+4. 将软盘以 fat 格式挂载到宿主机的 /mnt/learn 目录
+
+```bash
+sudo mount -o loop -t vfat shos.img /mnt/learn
+```
+
+5. 拷贝 loader.asm 加载文件编译号的 loader.bin 拷贝到挂载点
+
+```bash
+sudo cp loader.bin /mnt/learn
+```
+
+6. 启动 bochs
+
+```bash
+bochs -f ./bochsrc
+```
+
+
+
+
+
+运行结果如下：
 

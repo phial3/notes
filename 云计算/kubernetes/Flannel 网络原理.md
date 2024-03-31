@@ -474,7 +474,7 @@ flannel.1 设备会进一步拆包，取出 "原始IP包" 。接下来就到了�
 
 Flannel 的 host-gw 模式的工作原理非常简单：
 
-![host_gw_network_1](E:\notes\云计算\pic\k8s原理\host_gw_network_1.PNG)
+![host_gw_network_1](../pic/k8s原理/host_gw_network_1.PNG)
 
 假设现在 Node1上的 Infra-container-1 要访问 Node2 上的 Infra-container-2。
 

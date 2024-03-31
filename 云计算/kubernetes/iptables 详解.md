@@ -84,7 +84,9 @@ Linux 将用户规则依据**功能和规则所处链路位置**进行分组，<
 
 整个网络流量的流向如下图：
 
-<img src="file:///E:/notes/云计算/pic/iptables/iptables_order.png" title="" alt="iptables_order" data-align="center">
+![iptables 流向](../pic/iptables/iptables_order.png)
+
+
 
 整体的流向为：
 
