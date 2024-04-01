@@ -67,12 +67,45 @@ Netlink套接字是一种用于在内核和用户空间进程之间传输信息�
 - **NETLINK_IP6_FW**：IPv6防火墙的协议类型。
 - **NETLINK_DNRTMSG**：DECnet路由消息的协议类型。
 - **NETLINK_KOBJECT_UEVENT**：内核消息到用户空间的协议类型，用于内核对象的事件。
-- **NETLINK_GENERIC**：通用的协议类型。
+- **NETLINK_GENERIC**：通用的协议类型。是专门为用户使用的，因此，用户可以直接使用它，而不必添加新的协议类型。
 - **NETLINK_SCSITRANSPORT**：SCSI传输的协议类型。
 - **NETLINK_ECRYPTFS**：eCryptfs的协议类型。
 - **NETLINK_RDMA**：RDMA（远程直接内存访问）的协议类型。
 -  **NETLINK_CRYPTO**：加密层的协议类型。
 - **NETLINK_SMC**：SMC（System Management Control）监视的协议类型。
+
+
+
+在Linux3.0的内核版本中定义了下面的21个用于Netlink通信的宏，其中默认的最大值为32：
+
+```c
+#define NETLINK_ROUTE         0    /* Routing/device hook                */  
+#define NETLINK_UNUSED        1    /* Unused number                */  
+#define NETLINK_USERSOCK      2    /* Reserved for user mode socket protocols     */  
+#define NETLINK_FIREWALL      3    /* Firewalling hook                */  
+#define NETLINK_INET_DIAG     4    /* INET socket monitoring            */  
+#define NETLINK_NFLOG         5    /* netfilter/iptables ULOG */  
+#define NETLINK_XFRM          6    /* ipsec */  
+#define NETLINK_SELINUX       7    /* SELinux event notifications */  
+#define NETLINK_ISCSI         8    /* Open-iSCSI */  
+#define NETLINK_AUDIT         9    /* auditing */  
+#define NETLINK_FIB_LOOKUP    10      
+#define NETLINK_CONNECTOR     11  
+#define NETLINK_NETFILTER     12    /* netfilter subsystem */  
+#define NETLINK_IP6_FW        13  
+#define NETLINK_DNRTMSG       14    /* DECnet routing messages */  
+#define NETLINK_KOBJECT_UEVENT    15    /* Kernel messages to userspace */  
+#define NETLINK_GENERIC       16  	/* leave room for NETLINK_DM (DM Events) */  
+#define NETLINK_SCSITRANSPORT 18    /* SCSI Transports */  
+#define NETLINK_ECRYPTFS      19  
+#define NETLINK_RDMA          20  
+  
+#define MAX_LINKS 32  
+```
+
+
+
+
 
 
 
