@@ -366,6 +366,161 @@ LABEL_MEM_CHK_OK:                   ; 如果读取成功，继续执行实模式
 
 ### 5. 获取 VBE 相关信息
 
+```assembly
+;----------------------------------------------------------------------------
+; 函数名: GetSVGAModeInfo
+;----------------------------------------------------------------------------
+; 作用:
+;	在实模式下，获取内存，调用 int 15h 子功能 ax=0E820h
+GetSVGAModeInfo:
+        ; 打印信息，开始获取 svga 信息
+        mov             ax,                 StartGetSVGAVBEInfoMessage             ; 显示字符串
+        mov             dx,                 0600h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 StartGetSVGAVBEInfoMessageLength            ; 显示长度
+        call            DisplayStrRealMode
+
+        ; ====== step 1. 获取VBE控制器信息
+        mov             ax,                 TmpBaseOfBuff
+        mov             es,                 ax
+        mov             di,                 TmpOffsetOfBuff
+        mov             ax,                 4F00h                                   ; VBE 规范的 00h 号功能可为调用者提供已安装的VBE软件和硬件信息
+        int             10h
+        ; 保存的结果在 es:di 中，也就是临时缓存区保存着 VbeInfoBlock 信息块结构
+
+        cmp             ax,                 004Fh                                   ; AL=4Fh 支持该功能，AH=00h 操作成功
+        jz              .KO                                                         ; 操作成功，跳转，操作失败，打印失败信息
+
+        ; 操作失败，打印失败信息
+        mov             ax,                 GetSVGAVBEInfoErrMessage                ; 显示字符串
+        mov             dx,                 0700h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAVBEInfoErrMessageLength          ; 显示长度
+        call            DisplayStrRealMode
+        jmp             $                                                           ; 失败以后，停止运行
+
+.KO:        ; 获取 VBE 控制信息 操作成功
+        ; 操作成功，打印成功信息
+        mov             ax,                 GetSVGAVBEInfoOKMessage                ; 显示字符串
+        mov             dx,                 0700h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAVBEInfoOKMessageLength          ; 显示长度
+        call            DisplayStrRealMode
+
+        ; ====== step 2. 获取VBE模式信息
+        ; 打印信息，开始获取 svga 模式信息
+        mov             ax,                 StartGetSVGAModeInfoMessage             ; 显示字符串
+        mov             dx,                 0800h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAModeInfoMessageLength            ; 显示长度
+        call            DisplayStrRealMode
+
+
+        ; 此时的 TmpBaseOfBuff:TmpOffsetOfBuff 指向 VbeInfoBlock 信息块结构的起始地址
+        mov             ax,                 TmpBaseOfBuff
+        mov             es,                 ax
+        mov             si,                 TmpOffsetOfBuff + 14                    ; VbeInfoBlock 信息块结构的第14字节开始的4B，表示 VideoModePtr 指针
+
+        mov             esi,                dword       [es:si]                     ; es:si 指向的双字（4B），给 esi
+        mov             edi,                TmpOffsetOfBuff + 512                   ; edi 指向显示模式扩展信息
+
+        ; esi 保存 VbeInfoBlock.VideoModePtr
+        ;   - VideoModePtr是个执行模式号列表（VBE芯片能够支持的模式号）的远指针，一般指向VbeInfoBlock.Reserved
+        ; edi指向VbeInfoBlock.OemData
+        ;   - 但是我们不关心VbeInfoBlock.OemData中的数据，从0x8200之后的内存空间用于保存VBE显示模式扩展信息（ModeInfoBlock）
+
+Label_SVGA_Mode_Info_Get:               ; 获取所有的模式信息，[es:esi] 指向模式列表 VideoModeList
+        mov             cx,                 word        [es:esi]                    ; VideoModeList 每个模式号有 16位，2个字节，
+
+        ;======= Step3.	显示每个模式信息
+        push            ax
+
+        mov             ax,                 00h
+        mov             al,                 ch
+        call            Display_AL                                                  ; 显示高8位
+
+        mov             ax,                 00h
+        mov             al,                 cl
+        call            Display_AL                                                  ; 显示高8位
+
+        mov             ax,                 ','                                     ; 分隔符
+	    mov	            [gs:DisplayPosition],	        ax
+	    mov             ax,                 [DisplayPosition]
+	    add	            ax,	                2
+	    mov             [DisplayPosition],              ax
+
+        pop             ax
+
+        cmp             cx,                 0FFFFh
+        jz              Label_SVGA_Mode_Info_Finish                                 ; 判断是否读取完成
+
+        ;======= Step4. 获取 VBE 每个模式的具体信息
+        mov             ax,                 4F01h
+        int             10h                                                         ; BE 规范的 01h 号功能用于获得指定模式号（自于VideoModeList列表）的 VBE 显示模式扩展信息
+
+        cmp             ax,                 004Fh                                   ; 判断返回状态，支持且操作成功
+        jnz             Label_SVGA_Mode_Info_FAIL                                   ; 操作失败，跳转
+
+        add             esi,                2
+        add             edi,                0100h
+
+        jmp             Label_SVGA_Mode_Info_Get
+
+Label_SVGA_Mode_Info_FAIL:
+        ; 打印信息，svga 模式信息获取失败
+        mov             ax,                 GetSVGAModeInfoErrMessage               ; 显示字符串
+        mov             dx,                 0900h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAModeInfoErrMessageLength         ; 显示长度
+        call            DisplayStrRealMode
+
+Label_SET_SVGA_Mode_VESA_VBE_FAIL:
+        mov             ax,                 GetSVGAModeInfoOKMessage                ; 显示字符串
+        mov             dx,                 0900h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAModeInfoOKMessageLength          ; 显示长度
+        call            DisplayStrRealMode
+
+        jmp             $
+
+Label_SVGA_Mode_Info_Finish:
+        ; 打印信息，svga 模式信息获取成功
+        mov             ax,                 GetSVGAModeInfoOKMessage                ; 显示字符串
+        mov             dx,                 0900h                                   ; 游标位置，(DH、DL)＝游标坐标(行、列)，1行0列
+        mov             cx,                 GetSVGAModeInfoOKMessageLength          ; 显示长度
+        call            DisplayStrRealMode
+
+        ;======= Step5. 设置 VBE 显示模式
+        mov             ax,                 4F02h
+        mov             bx,                 4180h
+        ; 4180h = 0100 0001 1000 0000
+        ; bx为显示模式号，结构如下：
+        ; 0bit-7bit：VBE模式号（180h）
+        ; 9bit-10bit：保留，0
+        ; 11bit：0=使用当前刷新率，1=使用CRTC刷新率（0）
+        ; 【11bit为复位时，es:di无效】
+        ; 12bit-13bit：保留，0
+        ; 14bit：0=窗口帧缓存区模式，1=线性帧缓存区模式（1）
+        ; 15bit：0=清空显示内存数据，1=保留显示内存数据（0）
+        ; es:di：CRTCInfoBlock结构的起始地址
+
+	    cmp	            ax,	                004Fh
+	    jnz	            Label_SET_SVGA_Mode_VESA_VBE_FAIL
+
+        ret
+;----------------------------------------------------------------------------
+```
+
+
+
+VBE 相关功能见 `VBE功能.md`
+
+
+
+
+
+### 6. 从实模式进入保护模式再到IA-32e模式
+
+
+
+
+
+
+
 
 
 
