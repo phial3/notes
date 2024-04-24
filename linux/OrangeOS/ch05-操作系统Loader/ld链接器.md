@@ -1,5 +1,3 @@
-https://github.com/iDalink/ld-linker-script/tree/master/01%20%E5%9F%BA%E6%9C%AC%E6%A6%82%E5%BF%B5
-
 # ld linker script
 
 [toc]
@@ -714,7 +712,7 @@ gcc main.c /usr/lib/libm.a /usr/lib/libc.a
 
 
 
-#### **如何创建静态链接库？**
+#### **如何创建静态链接库？** 
 
 以上面提到的 `sum.c` 和 `main.c` 文件为例，将 `sum.c` 创建成为一个静态链接库
 
@@ -1214,3 +1212,315 @@ REGION_ALIAS("REGION_BSS", RAM);
 
 
 
+.......
+
+
+
+
+
+## 常用的编译命令
+
+
+
+### 1. as 命令
+
+as 命令是二进制工具集 GNU Binutils 的一员，是 GNU 推出的一款汇编语言编译器集，用于将汇编代码编译为二进制代码，它支持多种不同类型的处理器。 
+
+as 命令，其格式为 `as [选项] 汇编文件` 。
+
+常用参数：
+
+|     选项     |              说明              |
+| :----------: | :----------------------------: |
+|     -ac      |          忽略失败条件          |
+|     -ad      |          忽略调试指令          |
+|     -ah      |           包括高级源           |
+|     -al      |            包括装配            |
+|     -am      |           包括宏扩展           |
+|     -an      |          忽略形式处理          |
+|     -as      |            包括符号            |
+|    =file     |       设置列出文件的名字       |
+| --alternate  |        以交互宏模式开始        |
+|      -f      |      跳过空白和注释预处理      |
+|      -g      |          产生调试信息          |
+|      -J      |  对于有符号溢出不显示警告信息  |
+|      -L      |     在符号表中保留本地符号     |
+|      -o      |      指定要生成的目标文件      |
+| --statistics | 打印汇编所用的最大空间和总时间 |
+|  --32/--64   |        生成32/64位代码         |
+
+
+
+实例：
+
+```shell
+as --64 -o head.o head.s
+```
+
+这条命令的作用是把汇编源文件 head.s 编译成 64 位的二进制程序段，并将其保存在文件 head.o 里。之所以将 head.o 文件称为二进制程序段而不是二进制程序，是因为 head.o 文件不是可执行文件，它需要经过链接后，才能成为可执行程序。
+
+
+
+### 2. gcc 命令
+
+gcc命令来自英文词组 GNU Compiler Collection 的缩写，是 C/C++ 语言编译器。gcc 是开源领域使用最广泛的编译工具，具有功能强大、兼容性强、效率高等特点。
+
+编译工作由4个阶段组成：预编译（Preprocessing）、编译（Compilation）、汇编（Assembly）、链接（Linking）。
+
+- 预处理，**生成 `.i` 的文件**[预处理器cpp] 
+- 将预处理后的文件转换成汇编语言,，**生成文件 `.s`** [编译器egcs] 
+- 有汇编变为目标代码(机器代码)**生成 `.o` 的文件**[汇编器as] 
+- 连接目标代码，**生成可执行程序** [链接器ld] 
+
+
+
+语法: `gcc (选项) (参数)`
+
+
+
+1. **gcc 基本使用**
+
+最常用的有以下参数：
+
+- `-c` ：**只编译，不链接成为可执行文件**。编译器只是由输入的 .c 等源代码文件生成 .o 为后缀的目标文件，通常用于编译不包含主程序的子程序文件。
+- `-o output_filename` ：**确定输出文件的名称**为output_filename。同时这个名称不能和源文件同名。如果不给出这个选项，gcc就给出默认的可执行文件 a.out 。
+- `-g`：**产生符号调试工具**（GNU的 gdb）所必要的符号信息。想要对源代码进行调试，就必须加入这个选项。
+- `-O`：**对程序进行优化编译、链接**。采用这个选项，整个源代码会在编译、链接过程中进行优化处理，这样产生的可执行文件的执行效率可以提高，但是编译、链接的速度就相应地要慢一些，而且对执行文件的调试会产生一定的影响，造成一些执行效果与对应源文件代码不一致等一些令人“困惑”的情况。因此，一般在编译输出软件发行版时使用此选项。
+- `-O2`：比 -O 更好的优化编译、链接。当然整个编译链接过程会更慢。
+- `-Idirname`：**将 dirname 所指出的目录加入到程序头文件目录列表中，是在预编译过程中使用的参数**。
+- `-C` ：在预处理过程中，它不删除注释信息，通常情况下和-E联合使用。
+- `-mcmodel=large` ：mcmodel 用于限制程序访问的地址空间，选项 large 表明程序可访问任何虚拟地址空间，其他选择无法使程序访问整个虚拟地址空间。
+- `-fno-builtin` ：除非使用前缀__builtin_明确引用，否则编译器不识别所有系统内建函数。常见的系统内建函数有alloca、memcpy等
+- `-m32/-m64`：生成32/64位代码
+
+编译过程的分步执行：为了更好地理解gcc的工作过程，可以让在gcc工作的4个阶段中的任何一个阶段中停止下来。相关的参数有：
+
+-  `-E` 预编译后停下来，生成后缀为 `.i` 的预编译文件。 它使编译器只执行预处理过程，不执行编译、汇编、链接等过程，也不会生成目标文件，此时需要将源文件预处理的结果重定向到一个输出文件中
+- `-c` 编译后停下来，生成后缀为 `.o` 的目标文件。 
+- `-S` 汇编后停下来，生成后缀为 `.s` 的汇编源文件。
+
+
+
+2. **警告提示功能选项**
+
+
+
+gcc包含完整的出错检查和警告提示功能，它们可以帮助Linux程序员写出更加专业的代码。 
+
+- `-pedantic` 选项： 当gcc在编译不符合 ANSI/ISO C 语言标准的源代码时，将产生相应的警告信息。
+- `-wall` ： 显示警告信息。除了 `-pedantic` 之外，gcc 还有一些其他编译选项，也能够产生有用的警告信息。这些选项大多以 -W 开头。其中最有价值的当数 `-Wall` 了，使用它能够使 gcc 产生尽可能多的警告信息。
+- `-Werror` 选项 ：在处理警告方面，另一个常用的编译选项是 -Werror。它**要求 gcc 将所有的警告当成错误进行处理**，这在使用自动编译工具（如 Make  等）时非常有用。如果编译时带上 -Werror 选项，那么 gcc  会在所有产生警告的地方停止编译，迫使程序员对自己的代码进行修改。只有当相应的警告信息消除时，才可能将编译过程继续朝前推进。
+
+
+
+3. **库操作选项**
+
+在Linux下开发软件时，完全不使用第三方函数库的情况是比较少见的，通常来讲都需要借助一个或多个函数库的支持才能够完成相应的功能。 从程序员的角度看，函数库实际上就是一些头文件（.h）和库文件（.so 或 .a）的集合。虽然**Linux下的大多数函数都默认将头文件放到  /usr/include/ 目录下，而库文件则放到 /usr/lib/ 目录下**，但并不是所有的情况都是这样。
+
+正因如此，gcc  在编译时必须有自己的办法来查找所需要的头文件和库文件。常用的方法有： 
+
+- `-I` ： **可以向 gcc 的头文件搜索路径中添加新的目录**。 
+- `-L` ： **如果使用了不在标准位置的链接库文件，那么可以通过 -L 选项向 gcc 的库文件搜索路径中添加新的目录**。 
+- `-l` ： Linux下的**库文件在命名**时有一个约定，就是应该**以 lib 这3个字母开头**，由于所有的库文件都遵循了同样的规范，因此在用 `-l`  选项指定链接的库文件名时可以省去 lib 这3个字母。例如，gcc 在对 -lfoo 进行处理时，会自动去链接名为 libfoo.so 的文件。 
+- `-static` ： Linux下的库文件分为两大类，分别是：动态链接库（通常以 .so 结尾）和静态链接库（通常以 .a 结尾）。 两者的差别仅在程序执行时所需的代码是在运行时动态加载的，还是在编译时静态加载的。 默认情况下，**gcc 在链接时优先使用动态链接库**，<u>只有当动态链接库不存在时才考虑使用静态链接库</u>。 如果需要的话，可以在编译时加上 <u>-static 选项，强制使用静态链接库</u>。
+- `-shared`： **创建共享库/动态库**，**生成一个共享的目标文件**，它能够与其他的目标一起链接生成一个可执行的文件。
+
+
+
+4. **调试选项**
+
+对于Linux程序员来讲，gdb（GNU Debugger）通过与 gcc 的配合使用，为基于Linux的软件开发提供了一个完善的调试环境。常用的有：
+
+- `-g` 和 `-ggdb` ： 默认情况下，gcc 在编译时不会将调试符号插入到生成的二进制代码中，因为这样会增加可执行文件的大小。**如果需要在编译时生成调试符号信息，可以使用 gcc 的 -g 或 -ggdb 选项**。 
+  - gcc 在产生调试符号时，同样采用了分级的思路，开发人员可以通过在 -g 选项后附加数字1、2、3指定在代码中加入调试信息的多少。
+  - 默认的级别是2（-g2），此时产生的调试信息包括：扩展的符号表、行号、局部或外部变量信息。 
+  - 级别3（-g3）包含级别2中的所有调试信息以及源代码中定义的宏。 
+  - 级别1（-g1）不包含局部变量和与行号有关的调试信息，因此只能够用于回溯跟踪和堆栈转储。 回溯追踪：指的是监视程序在运行过程中函数调用历史。 堆栈转储：则是一种以原始的十六进制格式保存程序执行环境的方法。
+  - 注意：使用任何一个调试选项都会使最终生成的二进制文件的大小急剧增加，同时增加程序在执行时的开销，因此，调试选项通常仅在软件的开发和调试阶段使用。
+
+- `-p` 和 `-pg` ： **会将剖析（Profiling）信息加入到最终生成的二进制代码中**。剖析信息对于找出程序的性能瓶颈很有帮助，是协助Linux程序员开发出高性能程序的有力工具。
+- `-save-temps` ：保存编译过程中生成的一些列中间文件。
+
+
+
+实例：
+
+```shell
+gcc -E entry.S > entry.s
+```
+
+这条命令的作用是对汇编源文件 entry.S 进行预处理，同时将预处理的结果重定向（导出）到目标文件entry.s中。
+
+注意：如果注释符在编译过程中引发错误，可尝试将注释符 '//' 改为 '/* */'
+
+
+
+```shell
+gcc -mcmodel=large -fno-builtin -m64-c main.c
+```
+
+这条命令的作用是将C语言源文件main.c编译成64位的二进制程序段文件main.o。与此同时，这条命令还不限制地址空间的访问范围、不识别所有系统内建函数。
+
+
+
+### 3. ld 命令
+
+ld命令是二进制工具集GNU Binutils的一员，是GNU链接器，用于将目标文件与库链接为可执行程序或库文件
+
+
+
+命令格式：`ld [options] <objfile...>`
+
+ld 命令的所有选项为：
+
+- `-b <input-format>`：指定目标代码输入文件的格式。它指定输入文件的文件格式。ld命令支持的文件格式有：elf64-x86-64、elf32-i386、a.out-i386-linux、pei-i386、pei-x86-64、elf64-l1om、elf64-little、elf64-big、elf32-little、elf32-big、srec、symbolsrec、verilog、tekhex、binary、ihex等。
+- `-Bstatic`：只使用静态库
+- `-Bdynamic`：只使用动态库
+- `-Bsymbolic`：把引用捆绑到共享库中的全局符号
+- `-c <MRI-commandfile>,--mri-script=<MRI-commandfile>`：为与MRI链接器兼容，ld接受由MRI命令语言编写的脚本文件
+- `--cref`：创建跨引用表
+- `-d,-dc,-dp`：即使指定了可重定位的输出文件（使用-r），也会为公共符号分配空间。脚本命令“FORCE_COMMON_ALLOCATION”具有相同的效果
+- `-defsym`：在输出文件中创建指定的全局符号
+- `demangle`：在错误消息中还原符号名称
+- `-e <entry>`：使用指定的符号作为程序的初始执行点
+- `-E,--export-dynamic`：对于ELF格式文件，创建动态链接的可执行文件时，把所有符号添加到动态符号表
+- `-f <name>,--auxiliary=<name>`：对于ELF格式共享对象，设置 DT_AUXILIARY 名称
+- `-F <name>,--filter=<name>`：对于ELF格式共享对象，设置 DT_FILTER 名称。这告诉动态链接器，正在创建的共享对象的符号表应该用作共享对象名称的符号表的筛选器。
+- `-g`：被忽略。用于提供和其他工具的兼容性
+- `-h`：对于ELF格式共享对象，设置 DT_SONAME 名称
+- `-I<file>,--dynamic-linker=<file>`：指定动态链接器。这仅在生成动态链接的ELF可执行文件时才有意义。默认的动态链接器通常是正确的，除非您知道正在做什么，否则不要使用该选项。
+- `-l <namespec>,--library=<namespec>`：把指定的库文件添加到要链接的文件清单
+- `-L <searchdir>,--library-path=searchdir`:把指定的路径添加添加到搜索库的目录清单
+- `-M,--print-map`:显示链接映射，用于诊断目的
+- `-Map=<mapfile>` ：将链接映射输出到指定的文件
+- `-m <emulation>`：模拟指定的链接器
+- `-N,--omagic`：指定读取/写入文本和数据段
+- `-n,--nmagic`：关闭节的页面对齐，并禁用对共享库的链接。如果输出格式支持Unix样式的幻数，则将输出标记为"NMAGIC"
+- `-noinhibit-exec`：生成输出文件，即使出现非致命链接错误。通常，如果链接器在链接过程中遇到错误，它将不会生成输出文件。
+- `-no-keep-memory`：ld通常在内存中缓存输入文件的符号表来优化内存使用速度。此选项告诉ld不要缓存符号表。当链接大型可执行文件时，如果ld耗尽内存空间，则可能需要使用该选项
+- `-O <level>`：对于非零的优化等级，ld将优化输出。此操作会比较耗时，应该在生成最终的结果时使用。
+- `-o <output>,--output=<output>`：指定输出文件的名称
+- `-oformat=<output-format>`：指定输出文件的二进制格式
+- `-R <filename>,--just-symbols=<filename>`：从指定的文件读取符号名称和地址
+- `-r,--relocatable`：生成可重定位的输出（称为部分连接）
+- `-rpath=<dir>`：把指定的目录添加到运行时库搜索路径
+- `-rpath-link=<dir>`：指定搜索运行时共享库的目录
+- `-S,--strip-debug`：忽略来自输出文件的调试器符号信息
+- `-s,--strip-all`：忽略来自输出文件的所有符号信息
+- `-shared,-Bshareable`：创建共享库
+- `-split-by-file[=size]`：为每个目标文件在输出文件中创建额外的段大小达到size。size默认为1
+- `-split-by-reloc[=count]`：按照指定的长度在输出文件中创建额外的段
+- `--section-start=<sectionname>=<org>`：在输出文件中指定的地址定位指定的段
+- `-T <scriptfile>,--script=<scriptfile>`：使用scriptfile作为链接器脚本。此脚本将替换ld的默认链接器脚本（而不是添加到其中），因此脚本必须指定输出文件所需的所有内容。如果当前目录中不存在脚本文件，“ld”会在-L选项指定的目录中查找
+- `-Ttext=<org>`：使用指定的地址作为文本段的起始点
+- `-Tdata=<org>`：使用指定的地址作为数据段的起始点
+- `-Tbss=<org>`：使用指定的地址作为bss段的起始点
+- `-t,--trace`：在处理输入文件时显示它们的名称
+- `-u <symbol>,--undefined=<symbol>`：强制指定符号在输出文件中作为未定义符号
+- `-v,-V,--version`：显示ld版本号
+- `-warn-common`：当一个通用符号和另一个通用符号结合时发出警告
+- `-warn-constructors`：如果没有使用任何全局构造器，则发出警告
+- `-warn-once`：对于每个未定义的符号只发出一次警告
+- `-warn-section-align`：如果为了对齐而改动了输出段地址，则发出警告
+- `--whole-archive`：对于指定的存档文件，在存档中包含所有文件
+- `-X,--discard-locals`：删除所有本地临时符号
+- `-x,--discard-al`：删除所有本地符号
+
+
+
+### 4. objcopy命令
+
+将目标文件的一部分或者全部内容拷贝到另外一个目标文件中，或者实现目标文件的格式转换。 
+
+GNU实用工具程序objcopy的作用是拷贝一个目标文件的内容到另一个目标文件中。Objcopy使用GNU  BFD库去读或写目标文件。Objcopy可以使用不同于源目标文件的格式来写目的目标文件（也即是说可以将一种格式的目标文件转换成另一种格式的目标文 件）。
+
+
+
+格式：`objcopy [选项]... 输入文件 [输出文件]`
+
+命令参数： 
+
+- infile ：源文件
+- outfile ：目标文件，如果不指定目标文件那么objcopy将会创建一个临时文件，并且将其命名为源文件。 
+
+命令项： 
+
+- `-I bfdname` 或 `--input-target=bfdname`  ：指定输入文件的bfdname,可取值elf32-little，elf32-big等。 明确告诉Objcopy，源文件的格式是什么，bfdname是BFD库中描述的标准格式名。这样做要比“让Objcopy自己去分析源文件的格式，然后去和BFD中描述的各种格式比较，通过而得知源文件的目标格式名”的方法要高效得多。
+- `-O bfdname` 或 `--output-target=bfdname` ：指定输出文件的 bfdname ，使用指定的格式来写输出文件（即目标文件），bfdname是BFD库中描述的标准格式名。
+
+- `-F bfdname` 或 `--target=bfdname` ：指定输入、输出文件的bfdname，目标文件格式，只用于在目标和源之间传输数据，不转换。 明确告诉Objcopy，源文件的格式是什么，同时也使用这个格式来写输出文件（即目标文件），也就是说将源目标文件中的内容拷贝到目的目标文件的过程中，只进行拷贝不做格式转换，源目标文件是什么格式，目的目标文件就是什么格式。
+
+- `-j sectionname` 或 `--only-section=sectionname` ：只将由sectionname指定的section拷贝到输出文件，可以多次指定，并且注意如果使用不当会导致输出文件不可用。 
+- `-R sectionname` 或 `--remove-section=sectionname` ：从输出文件中去除掉由sectionname指定的section，可以多次指定，并且注意如果使用不当会导致输出文件不可用。注意：不恰当地使用这个选项可能会导致输出文件不可用。
+
+- `-S` 或 `--strip-all` ：不从源文件拷贝符号信息和relocation信息。 
+
+- `-g` 或 `--strip-debug` ：不从源文件拷贝调试符号信息和相关的段。对使用-g编译生成的可执行文件执行之后，生成的结果几乎和不用-g进行编译生成可执行文件一样。 
+
+- `--strip-unneeded` ：去掉所重定位处理不需要的符号。 
+
+- `-K symbolname` 或 `--keep-symbol=symbolname` ：strip的时候，保留由symbolname指定的符号信息。可以指定多次。 
+
+- `-N symbolname` 或 `--strip-symbol=symbolname` ： 不拷贝由symbolname指定的符号信息，可以多次指定。 
+
+- `-G symbolname ` 或 `--keep-global-symbol=symbolname`：只保留symbolname为全局的，让其他的都是文件局部的变量这样外部不可见，这个选项可以多次指定。 
+
+- `-L symbolname` 或 ` --localize-symbol=symbolname` ：将变量symbolname变成文件局部的变量。可以多次指定。 
+
+- `-W symbolname` 或 ` --weaken-symbol=symbolname`：弱化变量。 
+
+- `--globalize-symbol=symbolname` ：让变量symbolname变成全局范围，这样它可以在定义它的文件外部可见。可以多次指定。 
+
+- `-w` 或 `--wildcard` ：允许对其他命令行项中的symbolnames使用正则表达式。问号(?)，星号(*)，反斜线(\)，和中括号([])操作可以用在标号名称的任何位置。如果标号的第一个字符是感叹号(!)，那么表示相反的含义，例如： `-w -W !foo -W fo*`， 表示objcopy将要弱化所有以"fo"开头的标号，但是除了标号"foo"。 
+
+- `-x` 或 `--discard-all` ：不从源文件中拷贝非全局变量。 
+
+- `-X` 或 `--discard-locals` ： 不拷贝编译生成的局部变量(一般以L或者..开头)。 
+
+- `-b byte` 或 `--byte=byte` ：只保留输入文件的每个第byte个字节(不会影响头部数据)。byte的范围可以是0到interleave-1。这里，interleave通过-i选项指定，默认为4。将文件创建成程序rom的时候，这个命令很有用。它经常用于srec输出目标。 
+
+- `-i interleave` 或 `--interleave=interleave` ：每隔interleave字节拷贝1 byte。通过-b选项指定选择哪个字节，默认为4。如果不指定-b那么objcopy会忽略这个选项。 
+
+- `--gap-fill val`：在section之间的空隙中填充val, 
+
+- `--set-start val`：设定新文件的起始地址为val，并不是所有格式的目标文件都支持设置起始地址。 
+
+- `--change-start incr 
+  --adjust-start incr 
+      通过增加incr量来调整起始地址，并不是所有格式的目标文件都支持设置起始地址。 
+
+- `--change-address incr` 或 `--adjust-vma incr` ：通过增加incr量调整所有sections的VMA(virtual memory address)和LMA(linear memory address),以及起始地址。 
+
+- `--change-section-address section{=,+,-}val` 或 `--adjust-section-vma section{=,+,-}val` ：调整指定section的VMA/LMA地址。 
+
+- `--set-section-flags section=flag` ：指定指定section的flag，flag的取值可以alloc，contents, load, noload, readonly, code, data, rom, share, debug。我们可以设置一个没有内容的节的flag，但是清除一个有内容的节的flag是没有意义的--应当把相应的节移除。并不是所有的flags对于所有的目标文件都有意义。 
+
+- `--add-section sectionname=filename` ：在拷贝文件的时候，添加一个名为sectionname的section，该section的内容为filename的内容，大小为文件大小。这个选项只在那些可以支持任意名称section的文件好用。 
+
+- `--rename-section oldname=newname[,flags]` ：更改section的名 
+
+  - 将一个section的名字从oldname更改为newname，同时也可以指定更改其flags。这个在执行linker脚本进行重命名的时候，并且输出文件还是一个目标文件并不成为可执行的连接文件，这个时候很有优势。
+
+  - 这个项在输入文件是binary的时候很有用，因为这经常会创建一个名称为.data的section，例如，你想创建一个名称为.rodata的包含二进制数据的section，这时候，你可以使用如下命令： 
+
+  -  ```shell
+     objcopy -I binary -O <output_format> -B <architecture> \ 
+         --rename-section .data=.rodata,alloc,load,readonly,data,contents \ 
+         <input_binary_file> <output_object_file> 
+     ```
+
+    
+
+- `--add-gnu-debuglink=path-to-file` ：创建一个.gnu_debuglink节，这个节包含一个特定路径的文件引用，并且把它添加到输出文件中。 
+
+- `--only-keep-debug` ：对文件进行strip，移走所有不会被--strip-debug移走的section，并且保持调试相关的section原封不动。
+
+
+
+示例：
+
+```shell
+objcopy -I elf64-x86-64-S -R ".eh_frame" -R ".comment" -O binary system kernel.bin
+```
+
+这条命令的作用是移除可执行程序system中的所有symbol和relocation信息，并移除名为．eh_frame和．comment的程序段，最后将剩余程序段以二进制格式输出到文件kernel.bin中。此处提及的 .eh_frame 程序段用于处理异常，而 .comment 程序段则用于存放注释信息，由于系统内核只能以二进制程序执行，那么使用objcopy指令将ELF格式的文件转换为二进制文件就有必要，同时为了减少内核程序中的脏数据，多余的段数据要移除掉。
