@@ -49,6 +49,9 @@ brew install git-filter-repo
 ## 获取文件路径和最后一次提交信息 hash
 git rev-list --objects --all | grep "$(git verify-pack -v .git/objects/pack/*.idx | sort -k 3 -n | tail -10 | awk '{print$1}')"
 
+## -k3gr: 按第三列（原始大小）逆序排序
+git verify-pack -v .git/objects/pack/*.idx | sort -k3gr | head -10 | awk '{print $1}'
+
 ## 查看该文件的所有历史提交记录
 git log --all --oneline --find-object=d8a8f8f4d2a1e7834b3b3e3c3e3c3e3c3e3c3e3c
 ## or
